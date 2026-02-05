@@ -1,0 +1,143 @@
+#include <iostream>
+#include <fstream>
+#include <cmath>
+#include <string>
+#include <Windows.h>
+
+using namespace std;
+
+class ErrorRange { public: double x; ErrorRange(double v) : x(v) {} };
+class ErrorNoFile { public: string f; ErrorNoFile(string s) : f(s) {} };
+
+                          string dat3_t[100]; double dat3_v[100]; int dat3_n = 0;
+                          bool k_error = false;
+
+                          void loadDat3() {
+                              ifstream f("dat3.dat");
+                              if (!f) {
+                                  cerr << "Помилка: dat3.dat не знайдено! Вихід з програми." << endl;
+                                  exit(1);
+                              }
+                              while (f >> dat3_t[dat3_n] >> dat3_v[dat3_n]) dat3_n++;
+                              f.close();
+                          }
+
+                          double Tbl(string file, double x, double lim) {
+                              if (abs(x) > lim) throw ErrorRange(x);
+                              ifstream is(file);
+                              if (!is) throw ErrorNoFile(file);
+
+                              double xi, yi, xi1, yi1;
+                              if (!(is >> xi >> yi)) throw ErrorNoFile(file);
+
+                              while (is >> xi1 >> yi1) {
+                                  if (x >= xi && x <= xi1) {
+                                      is.close();
+                                      return yi + (yi1 - yi) * (x - xi) / (xi1 - xi);
+                                  }
+                                  xi = xi1; yi = yi1;
+                              }
+                              is.close();
+                              throw ErrorRange(x);
+                          }
+
+                          double U1(double x) { return atan(asin(sin(3 * x))); }
+                          double T1(double x) { return atan(acos(sin(2 * x))); }
+
+                          double Qqn1(double x, double y, double z) {
+                              double ux = U1(x); if (abs(ux) < 1e-9) ux = 1e-9;
+                              return x / ux + y * T1(y) - U1(z) * T1(z);
+                          }
+                          double Qnk1(double x, double y) {
+                              return 1.1 * Qqn1(x, y, x + y) - 0.9 * Qqn1(y, x, x - y);
+                          }
+                          double Rnk_A2(double x, double y) {
+                              double q1 = Qnk1(x, y), q2 = Qnk1(y, x);
+                              return x * q1 + y * q2 - 0.03 * q1 * q2;
+                          }
+
+                          double Qqn2(double x, double y, double z) {
+                              double ux = U1(x); if (abs(ux) < 1e-9) ux = 1e-9;
+                              return x / ux + y * T1(y) - 0.9 * U1(z) * T1(z);
+                          }
+                          double Qnk2(double x, double y) {
+                              return 1.3 * Qqn2(x, y, x) - 0.7 * Qqn2(y, x, x);
+                          }
+                          double func_A3(double x, double y, double z) {
+                              double q1 = Qnk2(x, y), q2 = Qnk2(y, x);
+                              return 1.75 * x * q1 + 1.25 * y * q2 - 1.5 * q1 * q2;
+                          }
+
+                          double Qqn(double x, double y, double z) {
+                              double ux = Tbl("dat1.dat", x, 5); if (abs(ux) < 1e-9) ux = 1e-9;
+                              return x / ux + y * Tbl("dat2.dat", y, 10) - Tbl("dat1.dat", z, 5) * Tbl("dat2.dat", z, 10);
+                          }
+                          double Qnk(double x, double y) { return Qqn(x, y, x + y) - Qqn(y, x, x - y); }
+                          double Rnk(double x, double y) { return x * Qnk(x, y) + y * Qnk(y, x); }
+                          double func_A1(double x, double y, double z) {
+                              double r_val = Rnk(x, y);
+                              return r_val + Rnk(y, z) * r_val;
+                          }
+
+                          double Gtext(string t) {
+                              for (int i = 0; i < dat3_n; i++) if (dat3_t[i] == t) return dat3_v[i];
+                              return 0;
+                          }
+
+                          double CText(double x, string text) {
+                              if (x > 0) return Gtext(text) + x;
+                              if (text == "") return Gtext("set") + Gtext("get") - x;
+                              return Gtext("set") + Gtext(text);
+                          }
+
+                          double Y(double x) {
+                              double inner = 100 - x * x;
+                              if (inner < 0) { k_error = true; return 0; }
+                              double val = x * sqrt(inner);
+                              if (val < 1) { k_error = true; return 0; }
+                              return log(val);
+                          }
+
+                          double Yrr(double f, double r) { return Y(f) * r + 0.5 * Y(r); }
+
+                          double Trr(double f, double r) {
+                              double v = 4 * f * f - r;
+                              if (v < 0) { k_error = true; return 0; }
+                              return sqrt(v) + 0.5 * Yrr(r, f);
+                          }
+
+                          int main() {
+                              SetConsoleOutputCP(1251); SetConsoleCP(1251);
+                              loadDat3();
+
+                              double x, y, z; string text;
+                              cout << "Введіть x, y, z та text: ";
+                              cin >> x >> y >> z; cin.ignore(); getline(cin, text);
+
+                              double r = 0; int alg_used = 1;
+                              try {
+                                  r = func_A1(x, y, z);
+                              }
+                              catch (ErrorNoFile& e) {
+                                  if (e.f == "dat2.dat") {
+                                      r = func_A3(x, y, z); alg_used = 3;
+                                  }
+                                  else {
+                                      double r1 = Rnk_A2(x, y); r = r1 + Rnk_A2(y, z) * r1; alg_used = 2;
+                                  }
+                              }
+                              catch (ErrorRange& e) {
+                                  double r1 = Rnk_A2(x, y); r = r1 + Rnk_A2(y, z) * r1; alg_used = 2;
+                              }
+
+                              double f = CText(max(max(x, y), max(x + z, y + z)), text);
+
+                              k_error = false;
+                              double k = f * Trr(f, r) + r * Trr(f, 2 * f);
+                              if (k_error) k = 0;
+
+                              double variant = 0.8973 * r + 0.1027 * k;
+
+                              cout << "Результат (Алг." << alg_used << "): " << variant << endl;
+                              return 0;
+                          }
